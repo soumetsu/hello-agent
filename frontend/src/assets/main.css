@@ -1,0 +1,24 @@
+@import './base.css';
+
+body {
+  min-width: 20rem;
+  color: #2d241d;
+  background-color: #f4eee6;
+  background-image:
+    linear-gradient(90deg, transparent 0 2.9rem, rgba(165, 68, 23, 0.12) 3rem, transparent 3.1rem),
+    repeating-linear-gradient(180deg, transparent 0 31px, rgba(82, 63, 48, 0.07) 32px);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+#app {
+  min-height: 100vh;
+}
