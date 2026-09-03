@@ -38,9 +38,9 @@ All commands must exit successfully. Report warnings separately from failures.
 - Through the Vite proxy, verify a successful calculator request returns HTTP
   `200` with a JSON `result`, and division by zero returns HTTP `400` with
   `{"detail":"Cannot divide by zero."}`.
-- In the browser, enter `7` and `6`. Exercise each operation button and confirm
-  Add is `13`, Subtract is `1`, Multiply is `42`, and Divide is
-  `1.1666666666666667`.
+- In the browser, enter `7` and `6`. Confirm the result updates automatically,
+  then exercise each operation button and confirm Add is `13`, Subtract is `1`,
+  Multiply is `42`, and Divide is `1.1666666666666667`.
 - Select **Clear inputs** and confirm both inputs are empty while the selected
   operation and last feedback remain. Select **Reset calculator** and confirm
   both inputs return to `0`, Add is selected, and result/error feedback is

@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { calculate } from './services/calculatorApi'
 
@@ -17,39 +17,86 @@ const result = ref(null)
 const errorMessage = ref('')
 const isCalculating = ref(false)
 const firstNumberInput = ref(null)
+let calculationTimer
+let calculationRequestId = 0
+let suppressAutomaticCalculation = false
 
 function selectOperation(selectedOperation) {
   operation.value = selectedOperation
 }
 
+function cancelPendingCalculation() {
+  window.clearTimeout(calculationTimer)
+  calculationRequestId += 1
+  isCalculating.value = false
+}
+
 function clearInputs() {
+  cancelPendingCalculation()
   firstNumber.value = null
   secondNumber.value = null
   firstNumberInput.value?.focus()
 }
 
 function resetCalculator() {
+  suppressAutomaticCalculation = true
+  cancelPendingCalculation()
   firstNumber.value = 0
   secondNumber.value = 0
   operation.value = 'add'
   result.value = null
   errorMessage.value = ''
   firstNumberInput.value?.focus()
+  nextTick(() => {
+    suppressAutomaticCalculation = false
+  })
 }
 
-async function handleCalculate() {
-  result.value = null
-  errorMessage.value = ''
-  isCalculating.value = true
+function inputsAreReady() {
+  return (
+    firstNumber.value !== null &&
+    firstNumber.value !== '' &&
+    secondNumber.value !== null &&
+    secondNumber.value !== '' &&
+    Number.isFinite(Number(firstNumber.value)) &&
+    Number.isFinite(Number(secondNumber.value))
+  )
+}
+
+async function calculateResult(requestId) {
+  if (requestId !== calculationRequestId) return
 
   try {
-    result.value = await calculate(operation.value, firstNumber.value, secondNumber.value)
+    const nextResult = await calculate(operation.value, firstNumber.value, secondNumber.value)
+    if (requestId === calculationRequestId) {
+      result.value = nextResult
+    }
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'The calculation could not be completed.'
+    if (requestId === calculationRequestId) {
+      result.value = null
+      errorMessage.value = error instanceof Error ? error.message : 'The calculation could not be completed.'
+    }
   } finally {
-    isCalculating.value = false
+    if (requestId === calculationRequestId) {
+      isCalculating.value = false
+    }
   }
 }
+
+function scheduleCalculation() {
+  cancelPendingCalculation()
+
+  if (suppressAutomaticCalculation || !inputsAreReady()) return
+
+  const requestId = calculationRequestId
+  errorMessage.value = ''
+  isCalculating.value = true
+  calculationTimer = window.setTimeout(() => calculateResult(requestId), 250)
+}
+
+watch([firstNumber, secondNumber, operation], scheduleCalculation, { immediate: true })
+
+onBeforeUnmount(cancelPendingCalculation)
 </script>
 
 <template>
@@ -61,10 +108,10 @@ async function handleCalculate() {
           <h1 id="calculator-heading">Calculator</h1>
           <span class="version" aria-label="Version 1.1.0">v1.1.0</span>
         </div>
-        <p class="introduction">Choose an operation, enter two numbers, and let the API calculate the result.</p>
+        <p class="introduction">Choose an operation and enter two numbers. The result updates automatically.</p>
       </header>
 
-      <form class="calculator-form" @submit.prevent="handleCalculate">
+      <form class="calculator-form" @submit.prevent="scheduleCalculation">
         <div class="number-fields">
           <div class="field">
             <label for="first-number">First number</label>
@@ -95,7 +142,6 @@ async function handleCalculate() {
               type="button"
               :aria-label="item.label"
               :aria-pressed="operation === item.value"
-              :disabled="isCalculating"
               @click="selectOperation(item.value)"
               @keydown.enter.prevent="selectOperation(item.value)"
               @keydown.space.prevent="selectOperation(item.value)"
@@ -107,13 +153,10 @@ async function handleCalculate() {
         </fieldset>
 
         <div class="form-actions">
-          <button class="calculate-button" type="submit" :disabled="isCalculating">
-            {{ isCalculating ? 'Calculating…' : 'Calculate result' }}
-          </button>
-          <button class="utility-button" type="button" :disabled="isCalculating" @click="clearInputs">
+          <button class="utility-button" type="button" @click="clearInputs">
             Clear inputs
           </button>
-          <button class="utility-button reset-button" type="button" :disabled="isCalculating" @click="resetCalculator">
+          <button class="utility-button reset-button" type="button" @click="resetCalculator">
             Reset calculator
           </button>
         </div>
@@ -123,10 +166,13 @@ async function handleCalculate() {
         <section
           class="feedback-panel result-panel"
           :class="{ 'is-active': result !== null }"
+          :aria-busy="isCalculating"
           aria-labelledby="result-heading"
         >
           <h2 id="result-heading">Result</h2>
-          <output aria-live="polite">{{ result === null ? 'No result yet.' : result }}</output>
+          <output aria-live="polite">
+            {{ isCalculating ? 'Calculating…' : result === null ? 'No result yet.' : result }}
+          </output>
         </section>
 
         <section
@@ -261,22 +307,25 @@ select:focus {
 
 .operation-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
 }
 
 .operation-button {
   display: flex;
-  min-height: 4.4rem;
+  min-height: 3.1rem;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.55rem;
-  padding: 0.7rem;
+  gap: 0.15rem;
+  padding: 0.35rem 0.2rem;
   border: 1px solid #bda895;
-  border-radius: 0.75rem;
+  border-radius: 0.65rem;
   color: #49392c;
   background: #f5eadb;
+  font-size: 0.72rem;
   font-weight: 650;
+  line-height: 1.1;
 }
 
 .operation-button:hover:not(:disabled) {
@@ -293,32 +342,22 @@ select:focus {
 
 .operation-symbol {
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: 1.6rem;
+  font-size: 1.25rem;
   font-weight: 400;
   line-height: 1;
 }
 
 .form-actions {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.65rem;
 }
 
-.calculate-button,
 .utility-button {
   min-height: 3.2rem;
   padding: 0.75rem 1.1rem;
   border-radius: 0.7rem;
   font-weight: 700;
-}
-
-.calculate-button {
-  border: 1px solid #913b0c;
-  color: #ffffff;
-  background: #a54417;
-}
-
-.calculate-button:hover:not(:disabled) {
-  background: #82350f;
 }
 
 .utility-button {
@@ -397,27 +436,16 @@ button:disabled {
 
 @media (min-width: 36rem) {
   .number-fields,
-  .feedback-grid,
-  .form-actions {
+  .feedback-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .operation-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .calculate-button {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (min-width: 52rem) {
-  .form-actions {
-    grid-template-columns: 1.5fr 1fr 1fr;
-  }
-
-  .calculate-button {
-    grid-column: auto;
+  .operation-button {
+    min-height: 3.2rem;
+    flex-direction: row;
+    gap: 0.35rem;
+    padding: 0.45rem;
+    font-size: 0.82rem;
   }
 }
 </style>
